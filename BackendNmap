@@ -1,0 +1,50 @@
+import { ok } from 'wix-http-functions';
+const exec = require('child_process').exec;
+const { connect, query } = require('azure-database-library');
+
+export function getNmapScan(request) {
+  const ip_address = request.ip;
+
+
+  exec(`nmap -sS -O ${ip_address} > scanResults.xml`, (error, stdout, stderr) => {
+    if (error) {
+      console.error(`Error executing scan: ${error}`);
+      return ok({
+        "status": "Error during scan.",
+        "ip_address": ip_address
+      });
+    }
+
+    // Process the scanResults.xml content or store it in the Azure database
+    const results = processScanResults();
+
+    // Store results in Azure database
+    connect().then((db) => {
+      query(db, 'INSERT INTO resultsTable ...', results).then(() => {
+        // Close the database connection
+        db.close();
+      });
+    });
+
+    return ok({
+      "status": "Scan successfull.",
+      "ip_address": ip_address
+    });
+  });
+}
+
+function processScanResults() {
+  // Process scan results and return relevant data
+
+  const fs = require('fs');
+
+  const scanResults = fs.readFileSync('./scanResults.xml', 'utf-8');
+  const filteredResults = scanResults
+    .split('\n')
+    .filter(line => /^M/.test(line) && (line.includes('Amazon') || line.includes('Smart')))
+    .join('\n');
+
+  fs.writeFileSync('./filteredResults.txt', filteredResults, 'utf-8');
+
+  return filteredResults;
+}
